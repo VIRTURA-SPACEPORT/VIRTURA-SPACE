@@ -4,6 +4,8 @@
 > 归属：VIRTURA Space 的独立赛事应用候选；VIRTURA Collective 负责未来真实活动的策划与主办。  
 > 关联规划：[VIRTURA ID / Pass 与多端应用路线](./virtura-pass-and-distributed-apps-2026-11-18.md)
 
+**后续关键修正（2026-11-18）**：现有现实游戏与线下 Battle 案例主要供活动组织参考，VIRTURA 的核心区别是线上参赛者、实体舞台和数字空间能够共同参与同一活动。SceneForge 不是赛事页面上的装饰，而是数字场地、预演、共享节目状态和赛后回放的基础能力。具体产品/接口/试点见 [VJ Battle × SceneForge 线上线下融合方案](./virtura-vj-battle-sceneforge-hybrid-2026-11-18.md)。其中参考 [Revision 2026 Shader Royale VJ Session](https://2026.revision-party.net/events/livecoding-events/) 的全球远程 VJ 实时参与实体舞台方案。
+
 ## 01. 创始想法（按提出时原意记录）
 
 - 希望组织一场**大型 VJ Battle**：线上游戏式集会，连接实际比赛场地，并借鉴增强现实游戏／ARG（alternate reality game，现实与虚拟交织的活动）“入侵现实”的感受。
