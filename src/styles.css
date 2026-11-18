@@ -89,3 +89,15 @@ dd { font-size: 13px; margin: 0; }
   .member-email { margin-top: 34px; }
   dl { gap: 42px; }
 }
+
+/* Optional social sign-in is hidden until the backend and provider are verified. */
+.social-auth { margin: 28px 0 0; border-top: 1px solid var(--line); padding-top: 16px; }
+.social-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 17px; }
+.social-button { padding: 13px 20px; min-height: 48px; background: transparent; border: 1px solid #77776c; color: #ededeb; font-size: 13px; }
+.social-button:hover { border-color: #ededeb; background: #252522; }
+.account-links { margin-top: 32px; padding-top: 26px; border-top: 1px solid var(--line); }
+.account-links h2 { font-size: 14px; font-weight: 500; margin: 0; }
+@media (max-width: 480px) {
+  .social-actions { flex-direction: column; }
+  .social-button { width: 100%; }
+}
