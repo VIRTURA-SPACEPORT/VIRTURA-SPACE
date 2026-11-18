@@ -452,7 +452,7 @@ export function App() {
             <p className="eyebrow">VIRTURA ID</p>
             <h1>暂时无法登录。</h1>
             <p className="intro" role="alert">{access.message}</p>
-            {supabase && <div className="form-actions"><button className="text-button" type="button" onClick={() => window.location.reload()}>重新读取</button><button className="text-button" type="button" onClick={() => void returnToSignIn()}>返回登录</button></div>}
+            {supabase && <div className="form-actions"><button className="text-button" type="button" onClick={() => window.location.reload()}>重新读取</button><button className="text-button" type="button" onClick={() => void supabase?.auth.signOut({ scope: 'local' })}>返回登录</button></div>}
           </>}
         </section>
         <aside className="access-aside" aria-label="登录说明">
