@@ -8,5 +8,6 @@ dist/
 !.env.example
 output/
 .playwright-cli/
+supabase/.temp/
 *.local
 .DS_Store
