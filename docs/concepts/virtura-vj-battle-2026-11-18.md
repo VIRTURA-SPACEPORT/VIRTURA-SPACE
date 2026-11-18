@@ -109,7 +109,7 @@
 
 ## 09. 参考项目与“可以借什么、不能借什么”
 
-1. [Found Video VJ Battle Royale / [[rect*]]repair，UFO Terminal](https://radii.co/article/shanghais-internet-turned-nightclub-into-found-footage-battle-royale)（2026-06-05 报道）：借观众在场投票、游戏式夜店氛围与素材拼贴；不能把其参与形式或品牌直接复刻为 VIRTURA。
+1. [Found Video VJ Battle Royale / [[rect*]]repair，UFO Terminal](https://radii.co/article/shanghais-internet-turned-nightclub-into-found-footage-battle-royale)（2026-06-05 报道）：借观众在场投票、游戏式夜店氛围与素材拼贴；不能把其参与形式或品牌直接复刻为 VIRTURA。**组织者原始项目目录** [rect.repair/catalogue](https://rect.repair/catalogue/) 收录《舞池刺杀》《Shanghai Encounter》《没有门的俱乐部》《异常物流系列》等现实游戏及活动案例，值得单独研究如何用少量规则把熟悉的社交场景改造成游戏。
 2. [LDI VJ Challenge 2026](https://www.ldishow.com/ldishowcom/ldi-vj-challenge)：借随机音乐类型与明确时长、评委制度；其奖金和赛事日期属于 LDI，不属于 VIRTURA。
 3. [Revision 2026 Shader Showdown](https://archive.revision-party.net/2026/shader-showdown/) 与 [Revision 2022 规则](https://2022.revision-party.net/events/special-events/)：借现场技术对抗、分屏展示、公开赛制；注意不同软件的公平条件。
 4. [Global Game Jam](https://globalgamejam.org/about) 与 [主办政策](https://globalgamejam.org/policies)：借统一主题、短周期创作、作品提交和活动安全运营；**GGJ 本身明确不是竞技比赛**，不应错误声称它支持淘汰制。
