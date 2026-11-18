@@ -13,7 +13,6 @@ type Membership = {
 type Access =
   | { state: 'loading' }
   | { state: 'guest' }
-  | { state: 'denied' }
   | { state: 'error'; message: string }
   | { state: 'member'; user: User; membership: Membership }
   | { state: 'waitlisted'; user: User; status: string; createdAt: string };
@@ -30,6 +29,7 @@ function authError(code?: string): string {
 }
 
 const socialProviders = (import.meta.env.VITE_SOCIAL_AUTH_ENABLED === 'true') ? (['google', 'github'] as const) : [];
+const identityLinkingEnabled = import.meta.env.VITE_IDENTITY_LINKING_ENABLED === 'true';
 
 function SignIn() {
   const [socialError, setSocialError] = useState('');
@@ -116,12 +116,12 @@ function SignIn() {
 
   return (
     <>
-      <p className="eyebrow">ACCESS <span>/</span> 受邀登录</p>
-      <h1>{sentTo ? '查看你的邮箱。' : '这个入口只对受邀者开放。'}</h1>
+      <p className="eyebrow">VIRTURA ID <span>/</span> 账号登录</p>
+      <h1>{sentTo ? '查看你的邮箱。' : socialProviders.length > 0 ? '进入纬图空间。' : '使用受邀邮箱登录。'}</h1>
       <p className="intro">
         {sentTo
           ? <>输入发送至 <strong>{sentTo}</strong> 的六位验证码。</>
-          : '使用我们邀请的邮箱登录 VIRTURA ID。首次登录后，即可查看你的账号与邀请状态。'}
+          : socialProviders.length > 0 ? '使用 Google 或 GitHub 建立 VIRTURA ID，查看个人候补状态。访问封闭实验仍需审核。' : '使用已获邀请的邮箱验证码登录 VIRTURA ID。'}
       </p>
 
       {socialProviders.length > 0 && !sentTo && (
@@ -216,15 +216,16 @@ function WaitlistPanel({ access }: { access: Extract<Access, { state: 'waitliste
   return (
     <>
       <p className="eyebrow">VIRTURA ID <span>/</span> WAITLIST</p>
-      <h1>账号已建立。</h1>
-      <p className="intro">你已登录纬图空间。当前账号尚未取得封闭测试访问权限；公开作品和介绍可直接浏览。</p>
+      <h1>欢迎加入候补名单。</h1>
+      <p className="intro">VIRTURA ID 已就绪。你的申请已进入候补名单，受邀体验开放后将另行通知。公开内容仍可访问。</p>
       <section className="identity-panel" aria-label="候补状态">
-        <div className="identity-top"><span>VIRTURA ID</span><span className="access-label">候补中</span></div>
+        <div className="identity-top"><span>VIRTURA ID</span><span className="access-label">{access.status === 'pending' ? '候补中' : '申请状态'}</span></div>
         <p className="member-email">{access.user.email || '已验证的第三方身份'}</p>
         <dl>
           <div><dt>状态</dt><dd>{access.status === 'pending' ? '等待审核' : access.status === 'contacted' ? '已联系' : access.status === 'declined' ? '本轮未获邀请' : access.status === 'withdrawn' ? '已撤回申请' : '等待审核'}</dd></div>
-          <div><dt>创建日期</dt><dd>{new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(access.createdAt))}</dd></div>
+          <div><dt>申请日期</dt><dd>{new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(access.createdAt))}</dd></div>
         </dl>
+        <p className="field-help">候补尚未采用公开排队序号。账户标识：{access.user.id.slice(0, 8).toUpperCase()}（不是排名或邀请码）</p>
       </section>
       <div className="form-actions member-actions">
         <a href="https://virtura.space">浏览公开内容</a>
@@ -244,7 +245,7 @@ function MemberPanel({ access }: { access: Extract<Access, { state: 'member' }> 
   const [identities, setIdentities] = useState<string[]>([]);
   const [identityError, setIdentityError] = useState('');
   useEffect(() => {
-    if (!supabase || socialProviders.length === 0) return;
+    if (!supabase || socialProviders.length === 0 || !identityLinkingEnabled) return;
     void supabase.auth.getUserIdentities().then(({data,error}) => {
       if (error) setIdentityError('暂时无法读取关联的登录方式。');
       else setIdentities(data.identities.map((identity) => identity.provider));
@@ -288,7 +289,7 @@ function MemberPanel({ access }: { access: Extract<Access, { state: 'member' }> 
         <p className="member-id">{access.membership.user_id}</p>
       </section>
       <p className="field-help">体验内容将按测试进度陆续开放。</p>
-      {socialProviders.length > 0 && (
+      {socialProviders.length > 0 && identityLinkingEnabled && (
         <section className="account-links" aria-label="关联登录方式">
           <h2>账号安全与登录方式</h2>
           <p className="field-help">已关联：{identities.length ? identities.join('、') : '正在确认'}</p>
@@ -458,12 +459,6 @@ export function App() {
           {access.state === 'member' && <MemberPanel access={access} />}
           {access.state === 'waitlisted' && <WaitlistPanel access={access} />}
           {access.state === 'loading' && <><p className="eyebrow">VIRTURA ID</p><h1>正在读取账号…</h1><p className="intro" role="status">正在核验登录会话与邀请状态。</p></>}
-          {access.state === 'denied' && <>
-            <p className="eyebrow">VIRTURA ID <span>/</span> 邀请状态</p>
-            <h1>等待邀请开放。</h1>
-            <p className="intro">当前账号尚未获得受邀访问权限。你可以联系团队确认邀请状态。</p>
-            <div className="form-actions"><a href="https://virtura.space">返回纬图空间 <span aria-hidden="true">↗</span></a><button type="button" className="text-button" onClick={() => void returnToSignIn()}>退出并更换邮箱</button></div>
-          </>}
           {access.state === 'error' && <>
             <p className="eyebrow">VIRTURA ID</p>
             <h1>暂时无法登录。</h1>
