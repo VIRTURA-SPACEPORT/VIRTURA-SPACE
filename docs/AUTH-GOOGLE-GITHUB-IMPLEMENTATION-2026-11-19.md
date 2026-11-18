@@ -1,122 +1,131 @@
-# VIRTURA ID｜Google / GitHub 快速登录与账号绑定：实施规格
+# VIRTURA ID · Google / GitHub 自由注册、候补与账号绑定
 
-> 版本：2026-11-19 · 状态：**开发就绪方案，未启用 OAuth Provider、未上新登录按钮、未实测跨账号登录**  
-> 所属 Web App：`VIRTURA-SPACEPORT/VIRTURA-SPACE` · 当前技术栈：React/Vite + Supabase Auth + Cloudflare Pages。  
-> 目的：已受邀用户可以给现有 VIRTURA ID 添加 GitHub/Google 登录入口，后续不再每次等待邮件验证码；保留现有邮箱 OTP 兜底，不开启公开自由注册。
+> 2026-11-19 · 设计决策 v0.2（更新 2026-11-18 用户最新意见）  
+> **决策：允许通过 Google/GitHub 自由注册 VIRTURA ID；新用户默认仅为候补（Waitlist），不自动开通内测、团队身份、比赛资格或资源权限。**  
+> **当前状态：方案已核实、尚未启用任何 OAuth provider 或数据库新表；现有邮箱 OTP 登录保持有效。**  
+> 代码母仓：`VIRTURA-SPACEPORT/VIRTURA-SPACE`；现有 React/Vite + Cloudflare Pages + Supabase Auth。
 
-## 1. 设计结论
+## 01. 定义：身份不等于授权
 
-- **一个 `auth.users.id` = 一个 VIRTURA ID 的权威主键**。邮箱 OTP、Google 与 GitHub 只是不同的登录凭据。收藏、活动、Pass、项目授权始终归属于稳定的用户 UUID。
-- Supabase Auth 已经支持 `signInWithOAuth({provider:'google'|'github'})`。同一**已验证邮箱**可能由 Supabase 自动关联身份；已登录用户可使用 `linkIdentity()` 手动关联不同邮箱的 OAuth 身份（官方文档标记 Beta，需从项目 Auth 设置启用）。
-- **第一个交付先支持“登录后手动绑定”**：现有受邀用户先用 OTP 登录，在 `/id` 的 Account & Security 区域选择“绑定 Google / GitHub”，完成 OAuth 授权后返回同一个 UUID，再显示绑定状态。以此最大化避免重复账号/权限错配。
-- **第二个交付再开放“用 Google / GitHub 登录”**。只允许已经存在且获得对应 `beta_access_grants`/原有成员授权的用户访问私有资源。**第三方登录成功≠受邀获准≠团队成员**。
-- 当前公开注册保持关闭。不为实现快速登录而开启全局自由注册；若供应商与已存在邮箱匹配失败，提示用户先用受邀邮箱 OTP 登录，再从账户内绑定，不能自动迁移角色或通过昵称匹配身份。
-- GitHub 登录的 OAuth 授权仅用于基本身份与邮箱；**不要请求 `repo`/私有仓库读取权限**。如将来有 GitHub 仓库同步功能，设计单独的用户授权与最小 Scope。
+五件事必须分开：
 
-## 2. 现有仓库的真实阻碍
+1. `auth.users`：**身份存在**。注册成功可登录和查看自己的候补状态。
+2. `registration_waitlist`：**候补关系**。默认 `pending`，管理员可审阅和联系，个人不能自行更改审批结论。
+3. `beta_access_grants`：**被邀请的实验权限**。限定 App/版本/期限；可撤销；不因拥有账号自动授予。
+4. `virtura_memberships`：**VIRTURA Collective 的真实团队身份**。仅授权组织成员。
+5. `project_assignments`：**具体协作或赛事角色**。比如某场赛事的参赛者、评审、Operator；不等于全站管理员。
 
-1. `src/supabase.ts` 已启用 `flowType: 'pkce'` 与 `detectSessionInUrl`，用户浏览器的 SDK Base URL 是 `https://当前站点/supabase`（同站代理）。
-2. `functions/supabase/[[path]].ts` 只放行 `POST /auth/v1/otp`, `POST /auth/v1/verify`, `POST /auth/v1/token`, `GET /auth/v1/user`, `POST /auth/v1/logout` 与 `GET /rest/v1/virtura_memberships`。**未放行 OAuth 授权与身份管理接口，且当前代理会拒绝一切 3xx 重定向。**
-3. `src/App.tsx` 的 `/auth/callback` 只显式处理 OTP 的 `token_hash` / Supabase 现有会话；引入 OAuth 后要确保 `?code=` 与 PKCE verifier 只交换一次，能捕获 `error` / `error_description`，拒绝恶意 `next` 跳转，并处理用户主动取消授权。
-4. 现有 `virtura_memberships` `admin/member` 是最初用于受邀访问的表；外部测试资格和真实组织成员必须优先拆开（Issue #3），否则新 OAuth 登录按钮虽可用，仍有错误身份表述。
-5. Github/Google 的 OAuth Apps、Client ID/Secret、Google consent branding、Supabase provider 启用、允许重定向列表、手动绑定开关均**未在本轮验证其实际设置**；不能宣称已准备好真实第三方登录。
+新用户由 OAuth 自动进入 `waitlisted`，但仍可浏览公共作品、目录、规则和开放展览；**除自己的档案/候补状态外，不能访问受邀 App、内部项目或他人的资料**。登录页不再宣称第三方账号都“受邀”。
 
-## 3. 需要由平台所有者通过官方控制台完成的配置
+在 UX 上分两种入口：
+- **Continue with Google / Continue with GitHub**：任何人可创建身份，进入候补；点击前明确文字“登录即创建 ID，内测须另行审核”，并说明候补联系的隐私目的。
+- **Email code**：保留已受邀老用户的验证码通道，`shouldCreateUser:false`；此处暂不主动开放新邮箱注册。
+- **Account / Connected logins**：已登录者主动绑定 Google/GitHub。绑定已有账号要保留相同 `auth.users.id`，不新建独立账户；不同邮箱需要用户自愿手动绑定，不按昵称匹配或静默合并。
 
-### GitHub
+## 02. 现有工程需要改什么（只在可审查 PR 中实施）
 
-- GitHub Developer Settings → OAuth Apps → New OAuth App；选择组织归属/账号所有者并确认管理者。
-- Homepage URL 使用实际 Preview 或未来品牌账户域名。**Authorization callback URL 用 Supabase Auth 项目的回调**：  
-  `https://cqevzwttlvqzgqztmwcy.supabase.co/auth/v1/callback`
-- GitHub 返回 Client ID 与 Client Secret；仅把 Secret 放在 **Supabase Dashboard → Authentication → Sign In / Providers → GitHub** 的受保护配置。不要提交 Git、放浏览器、Issue 或聊天文档。
-- GitHub OAuth App 注册的 callback 和网页自身的 `/auth/callback` 是**两个不同跳转点**；必须分别设置，不能混淆。
+已核对：
+- `src/supabase.ts` 使用同站 `/supabase` API、`flowType:pkce` 和持久会话。
+- `functions/supabase/[[path]].ts` 目前只允许 `otp / verify / token / user / logout` 等，拒绝全部 3xx OAuth 跳转；OAuth 即使在 Supabase Dashboard 启用也不会通过现有网页自动成功。
+- `src/App.tsx` 现把“无有效 `virtura_memberships`”判为 denied，这应改成 **`waitlisted`**：已注册但未授权的人看到候补面板，已有 `admin/member` 继续进入现有面板。
+- 目前 `closed_test_applications` 为**匿名邮箱申请**，已有申请不应被删除、覆盖或误计为实名；新身份注册走 `registration_waitlist`，需要在受控后台以已验证邮箱将老申请迁移或建立明确关联，不能仅凭邮件文本自动接管记录。
+- 未发现当前生产版 My Space 收藏、应用授权表、Google/GitHub provider 登录、任何微信/小红书账号绑定的实现；这些均有独立工程任务。
 
-### Google
+## 03. 推荐实现的最小数据模型（不是已部署 SQL）
 
-- Google Cloud Console / Google Auth Platform → Create Web Application OAuth client；先准备同意屏幕品牌、支持联系方式、用户范围；封闭测试阶段将对应测试账号纳入 Google 允许测试的用户范围（是否需要取决于 OAuth 应用发布状态）。
-- 最小权限建议 `openid`、`email`、`profile`，不请求 Drive、Gmail、Calendar 等非登录必需权限。
-- Authorized JavaScript Origins：按实际部署记录，例如 `https://virtura-space-preview.pages.dev`，本地开发按实际端口。  
-- Authorized redirect URI：`https://cqevzwttlvqzgqztmwcy.supabase.co/auth/v1/callback`（从 Supabase Google Provider 页面核对后复制，项目回调可能因自定义 Auth 域名变化）。
-- 保存 Google OAuth Client ID/Secret 到 Supabase Google provider 配置；Google 品牌验证与第三方用户准入需按真实发布状态核实。
+### `registration_waitlist`
 
-### Supabase
+字段：`user_id uuid primary key references auth.users`、`status text default 'pending' check (pending, approved, declined, withdrawn)`、`requested_at timestamptz`、`source_provider text`、`consent_version text`、`reviewed_at`、`reviewed_by`。
 
-- Authentication → URL Configuration：为**实际要使用的预览 origin** 添加精确 `/auth/callback` URL，例如 `https://virtura-space-preview.pages.dev/auth/callback`；未来更换生产域名时单独复核，不用不受控的通配符放行任意来源。
-- Authentication → Sign In / Providers：只在测试准备完毕后启用 GitHub、Google；启用项目的 **Allow manual linking**（官方仍标 Beta）供已有登录用户绑定。
-- **Allow new users to sign up** 保持关闭；不要因为社交登录错误就打开公共注册。按照实际“已创建用户 + 已授予资源资格”组合验证阻止陌生人。
-- 不改动现有邮件 OTP、短信、会话时长或 admin 角色，以防把可用登录链路搞坏。
+- 不能让客户端写入 `approved` 或修改审核人。
+- `SELECT` 仅限本人；普通用户初始登记 `INSERT` 限 `user_id=auth.uid() AND status='pending'`，没有 `UPDATE status` 权限。
+- 经 OAuth 回调并成功获得真实 Supabase 会话后，完成一次幂等 `INSERT`。如果注册前要获取联系同意，页面应明确说明，未同意时仅保留 Auth 身份，不自动订阅营销信息。
+- 别把 `auth.users` 用户数量当作内测人数。等待列表状态、审批事件、访问权限要分别计数。
+- 新用户未能写入候补记录时，应显示“候补登记未完成，可重试”，不能只显示空面板或误称已申请。
 
-## 4. 前端调用（接口示例，非已发布代码）
+### `beta_access_grants`
+
+字段：`id`、`user_id`、`app_id`、`status`、`issued_at`、`expires_at`、`revoked_at`、`approved_by`。
+- 用户不能自发授予、编辑或删除 `beta_access_grants`；批准由受控管理员流程完成。
+- 每个受限业务表根据 `auth.uid()` + 有效授权 + 所属资源检查行级权限。**RLS 的 `TO authenticated` 不是充分授权条件**。
+- 已登录的候补用户可使用自己的账户面板，但不能打开团队 `virtura_memberships` 保护的内部资料。
+- 权限撤销后，后台敏感 API 必须实时复核；不能只相信旧 JWT claims。
+
+### 邀请与团队权限不混用
+
+旧 `virtura_memberships` 保留仅表明组织关系；已获准内测的普通用户**不需要被写成团队 member**。
+
+## 04. Supabase Auth / Social OAuth 必须处理的配置冲突
+
+**关键：要允许第三方新用户创建 `auth.users`，托管 Supabase 的“Allow new users to sign up”通常需要开启。** 这与目前关闭公开注册的状态不同。启用全局注册后，普通 email/signup API 也可能被外部直接调用——仅靠 UI 隐藏邮箱注册按钮并不构成服务器端只允许 OAuth 注册。
+
+所以开发分两层：
+1. **授权安全底座先完成**：默认新 Auth 用户只看到自己候补页；全站受限 App/内部表无任何隐式授予；完成 RLS、管理员安全检查、滥用/限流/验证码/用户删除路径与测试。
+2. **开放 GitHub/Google 注册**：配置 provider OAuth credentials，Supabase Redirect URLs 与 Cloudflare 代理，开启新用户创建。邮箱 OTP 仍 `shouldCreateUser:false`。若正式要求服务端“**只允许** Google/GitHub 账号自助创建”，应使用 Supabase [Before User Created Auth Hook](https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook) 检查可信 `app_metadata.provider`，拒绝其他来源；注意 hook 也可能影响后台邀请/管理员创建账号，需在测试环境覆盖这些路径，不直接打开生产 hook。
+3. 注册后未获批准的用户必须**即使持有效 Supabase JWT 也不能获得任何私有业务权限**；这是开放 Auth 新用户和开放内测的核心区别。
+
+## 05. OAuth Provider 控制台配置（需账号所有者完成的事项）
+
+GitHub：
+- 在 [GitHub Developer Settings / OAuth Apps](https://github.com/settings/developers) 创建所属 VIRTURA 业务主体的 OAuth App。
+- Homepage 使用实际 Web 预览/生产地址；OAuth Provider callback 用 Supabase 的真实 Auth URL，例如 `https://cqevzwttlvqzgqztmwcy.supabase.co/auth/v1/callback`，需以 Supabase Dashboard 显示的回调为准。
+- 将 Client ID/Secret 在 Supabase Dashboard 的 GitHub Provider 中保存。**Secret 仅保留于安全的服务端控制台**，绝不放进 Git/客户端/Issue/聊天。
+
+Google：
+- [Google Auth Platform](https://console.cloud.google.com/auth/overview) 建立 Web OAuth Client，配置 Audience、Branding、必需的基本身份 scopes、站点 origin 和 Supabase Auth callback。
+- 身份 scopes 仅用 `openid`、`email`、`profile`，不要请求 Gmail、Drive、日历等额外权限。
+- Google Audience 如果仍是测试状态，可能只有授权测试用户能登入，不能宣传完全公开。
+- 将 Client ID/Secret 配置在 Supabase Google Provider，核验 Consent UI 的业务名称、隐私政策与实际托管 URL。
+
+Supabase：
+- 配置 [Redirect URL allowlist](https://supabase.com/docs/guides/auth/redirect-urls)，分别登记真实测试和正式 origin，建议准确 `/auth/callback` 终点而非任意通配符。
+- 账号手动绑定使用 [Identity Linking](https://supabase.com/docs/guides/auth/auth-identity-linking)（官方仍标 Beta），如配置允许，提供 `linkIdentity`、`getUserIdentities`、`unlinkIdentity`。
+- 为 OAuth 特定 API 做有审计的 Cloudflare allowlist 与受限制的 3xx 转发；不开放“任意路径代理”、任意 Origin 回跳、日志记录 token 和未经确认的账号自动合并。
+
+## 06. 前端用户路径与 API（示意，非已部署）
 
 ```ts
-// 已受邀、已存在用户的普通第三方登录（在 P0 安全验收后显示按钮）
+// 新用户或老用户：Google/GitHub 登录，最终进入 Waitlist 或获授权的 My Space
 await supabase.auth.signInWithOAuth({
-  provider: 'github', // or 'google'
+  provider: 'google', // or 'github'
   options: { redirectTo: `${window.location.origin}/auth/callback` },
 });
 
-// 用户已经通过邮箱 OTP 登录时，主动添加另一种身份。
-// 请在 SDK 类型确认 redirect 选项后指定 /auth/callback 返回位置。
-await supabase.auth.linkIdentity({ provider: 'google' });
+// 已登录用户：主动将另一个 provider 绑定到同一个 Supabase 用户
+await supabase.auth.linkIdentity({ provider: 'github' });
 
-// 显示绑定状态；不能根据 provider 的昵称或头像推断是否属于团队。
-const { data, error } = await supabase.auth.getUserIdentities();
-const linked = data?.identities.map((identity) => identity.provider) ?? [];
-
-// 解绑前额外确认；Supabase 要求至少保留两种已关联身份。
-const googleIdentity = data?.identities.find((identity) => identity.provider === 'google');
-if (googleIdentity) await supabase.auth.unlinkIdentity(googleIdentity);
+// 获取当前可靠绑定状态，解绑时保留至少一种可恢复身份
+const { data } = await supabase.auth.getUserIdentities();
+// await supabase.auth.unlinkIdentity(existingIdentity);
 ```
 
-请为按钮添加错误、取消、重复绑定、会话过期和客服说明。没有 provider 配置就不显示会导致失败的“立即登录”。
+完整回跳必须支持 `?code=` 的 PKCE exchange，并验证当前业务角色与用户 UUID，而不根据提供者的 email/nickname 直接加权限。回调时区分“首次注册待登记”“已在候补”“已获受邀资格”“真实组织成员”“授权被撤销”，不能自动进入同一团队面板。
 
-## 5. Cloudflare Pages 同站 OAuth 转发：工程方案与安全边界
+UX 文案建议：
+- 登录前：“Google 或 GitHub 创建 VIRTURA ID。账号创建后进入候补名单，封闭测试仍需邀请。”
+- 登录后待审：“你已建立 VIRTURA ID，当前处于候补状态。公开内容可以继续使用，受邀实验开放后另行通知。”
+- 在 Account & Security 显示：“已关联：Google · GitHub · 邮箱验证码”；只有真实从 provider 返回且验证通过才显示。
+- 无需让用户额外填写公司/技能/职位等大型表单；兴趣选择留到真正参加活动时。
 
-保留现有代理，**不把 Supabase Secret Key 暴露给客户端**。仅在独立 PR 内加入被测试覆盖的最小路径：
-- OAuth 发起：`GET /auth/v1/authorize`（provider=google/github；无其他 Provider）。
-- 已登录手动关联：SDK 对应的 `/auth/v1/user/identities/authorize` 与 `/auth/v1/user/identities` 等接口；具体请求路径、method 和头须通过**当前固定版本 @supabase/supabase-js** 的真实抓包/测试确认后才进入 allowlist。
-- 已有 `POST /auth/v1/token` 可用于完成 PKCE code 交换，现有 OTP 路径保持原样。
-- 授权端点会正常返回到 OAuth Provider 的 302/303，当前代理 `redirect: 'manual'` +“拒绝所有 3xx”不兼容：必须**仅对固定授权端点**允许并安全转发受验证的 Location，禁止把任意 API path 开放为跳转代理。
-- 不接受任意 `redirect_to` origin：应用回调应由 Supabase Redirect URLs 精确限制；生产域名与预览域名分开。检查 OAuth `state` / PKCE，切勿把授权码、Provider Token、Session Token 写到日志或 URL analytics。
-- 要求用户绑定前的当前会话是有效 VIRTURA ID；绑成功后再由服务端校验 `auth.uid()` / 当前用户权限，不将 provider email 用作权限判断。
-- 不允许在前端传给代理的 `user_metadata` 决定 admin/member；权限由受控表和 RLS 决定。
-- 解绑时保留至少一种可以可靠恢复的登录方式；对于邮箱/无密码 OTP 兜底，要先验收邮箱确实可收到邮件。
+## 07. 最小验收矩阵
 
-## 6. QA 测试矩阵（没有跑通不得启用）
+- 现有管理员邮箱 OTP 登录、刷新、退出、角色权限没有回归。
+- 全新 Google 用户首次登录产生 **一个 Auth UUID + 一条 pending waitlist**；未得到任何 beta grant / team membership。
+- 全新 GitHub 用户流程相同，GitHub 邮箱隐藏/无可用邮箱的异常有明确提示。
+- 同一人使用已经绑定的两个 provider，回到**同一个 UUID**；不同邮箱的两个身份只在已有会话下主动绑定，不能在没认证时按昵称/邮箱猜测合并。
+- 匿名访问、pending、approved、revoked、admin 分别测试 API 与 UI；pending 和 revoked **不能**读内部数据库、下载私有作品、进入受邀 App。
+- 第三方 OAuth 取消、过期授权码、重复回调、跨端换浏览器与 Safari 测试覆盖；不出现开放重定向或 token 泄漏。
+- 重复注册不重复候补、不同邮箱与同邮箱碰撞可恢复，管理员批准和撤销必须经受控后端执行。
+- 检测 OAuth 注册后的垃圾用户/机器人滥用、成本变化和数据保留/删除；对外隐私说明与实际用途匹配。
+- 无任何 provider Secret 被提交到 Git/泄露到前端/出现在测试报告。
 
-| 场景 | 通过条件 |
-| --- | --- |
-| 邮箱 OTP 现有管理员 | 原登录、刷新、退出、授权继续正常 |
-| 受邀现有用户同邮箱 Google | 原 `auth.users.id` 不变，不能产生重复受邀身份 |
-| 受邀用户 GitHub 私有邮箱/不同邮箱 | 先以 OTP 登录，再手动关联，保留唯一用户 ID；未确认时不自动合并 |
-| GitHub / Google 再登录 | 直接进入原 My Space，收藏与项目权限按原用户 ID 读取 |
-| 未受邀陌生账户 | 不可自动生成受邀资格、不可读任何受限内容；用户看到明确的申请入口 |
-| OAuth 拒绝授权、错误/过期 code、重复返回 | 不会假装成功，不会破坏原 OTP 会话；可重试 |
-| 身份解绑/重绑 | 最低身份数、账户恢复和身份唯一约束均通过 |
-| 权限撤销 / OAuth 仍有会话 | 被撤权用户即使再次 OAuth 登录也不可访问受限项目；不能仅凭旧 JWT claims |
-| 两账号/多个设备 | A 不能通过绑定读 B 的收藏；跨设备已授权账号可以回到自己的收藏 |
-| URL/CSRF/代理 | 禁止任意重定向、任意 Auth API 转发、敏感 token 日志与外部 Origin |
-| 手机 / Safari / Chrome | Provider 跳转回调/深链成功，退出和重新登录一致 |
+## 08. 实施顺序
 
-每个测试保留浏览器、账号类别、预览 URL、测试时间、实际截图/网络响应（删敏）与 PR；不要在测试报告出现邮箱、验证码、Access Token 和 Client Secret。
+**P0**：`registration_waitlist` + `beta_access_grants` RLS 与 API + 注册后 pending UI、邀请审批/撤销；保持现有 OTP。  
+**P1**：创建并配置 Google/GitHub OAuth Apps、处理 proxy/PKCE、开第三方注册，验收 pending 默认拒绝；在测试域名先跑完整流程。  
+**P1**：做账户内“绑定 / 解绑 / 查看登录方式”，以及 My Space 收藏跨登录方式不丢失。  
+**P2**：再面向真实公众开放入口；App 系列接入同一个 ID，微信/小红书小程序独立设计服务端映射。
 
-## 7. 优先级与延后边界
+参考（Supabase 官方）：[Google OAuth](https://supabase.com/docs/guides/auth/social-sign-in/auth-google) · [GitHub OAuth](https://supabase.com/docs/guides/auth/social-sign-in/auth-github) · [Identity Linking](https://supabase.com/docs/guides/auth/auth-identity-linking) · [Before User Created Hook](https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook) · [Auth Social Sign-In](https://supabase.com/docs/guides/auth/social-sign-in)。
 
-- **第 1 阶段**：P0 邀请资格与组织成员拆分 + 安全基线；让受邀 ID 的权限与 OAuth 方式无关。
-- **第 2 阶段**：启用服务商设置、完成已登录账号手动绑定和显示绑定状态；只给内部/受邀账户测试。
-- **第 3 阶段**：通过双账号验收后显示 GitHub/Google 快速登录按钮，不先面向陌生人注册。
-- **第 4 阶段**：My Space 收藏/继续访问对绑定前后稳定；按真实需求接各 App。
-- **更后**：Google One Tap、微信小程序、小红书小程序、XR 原生端以及“第三方 App 使用 VIRTURA ID 登录”的 OAuth Server/OIDC：是独立项目、不同安全模型；一个账号后端≠自动跨域 SSO。不要第一轮全部一起做。
-
-## 8. 官方来源（2026-11-19 核对）
-
-- Supabase [Sign in with GitHub](https://supabase.com/docs/guides/auth/social-sign-in/auth-github)
-- Supabase [Sign in with Google](https://supabase.com/docs/guides/auth/social-sign-in/auth-google)
-- Supabase [Identity Linking](https://supabase.com/docs/guides/auth/auth-identity-linking)
-- Supabase [General Auth Configuration](https://supabase.com/docs/guides/auth/general-configuration)
-- Supabase [Redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)
-- Supabase [JavaScript signInWithOAuth](https://supabase.com/docs/reference/javascript/auth-signinwithoauth)
-- Supabase [JavaScript linkIdentity](https://supabase.com/docs/reference/javascript/auth-linkidentity)
-- Supabase [Changelog](https://supabase.com/changelog.md)（2026-11-04 CLI v3 为 breaking change；本轮未运行 CLI 迁移或修改生产）
-
-本规格仅为代码与控制台配置交接，不是 OAuth Provider 授权配置的完成证明。
+本文件是**更新后的最终产品方向**：不同于初版“只给受邀账号绑定、自由注册继续关闭”的旧设计。实际代码、Provider 配置与生产开关仍需独立验证，未在本次文档提交中执行。
