@@ -43,6 +43,16 @@ on conflict (user_id) do update set status = 'active';
 
 数据库迁移位于 `supabase/migrations/`。`supabase/tests/virtura_memberships.sql` 在回滚事务中验证成员隔离、禁止提权、撤销权限和游客访问限制。
 
+
+## 产品进度与后续规划（2026-11-19）
+
+- [Web 平台进度快照](docs/WEB-PLATFORM-PROGRESS-2026-11-19.md)：当前实现状态、公众/个人/协作层和下一阶段的真实任务。
+- [Applications / Places / Academy / Events 注册表](docs/APP-SERIES-REGISTRY-2026-11-19.md)：SceneForge、Stage Replica、VJ Battle、MOVA 等现有资产与未实现功能的区别。
+- [Google / GitHub 注册与 VIRTURA ID 关联](docs/AUTH-GOOGLE-GITHUB-IMPLEMENTATION-2026-11-19.md)：产品决策为**社交账号可创建身份，但默认进入候补**；未批准者不得访问受限实验或内部项目。当前 OAuth 仍未配置和开放，详见 [#7](https://github.com/VIRTURA-SPACEPORT/VIRTURA-SPACE/issues/7)。
+- [VJ Battle / Pass / SceneForge 融合赛事策划（草稿 PR #2）](https://github.com/VIRTURA-SPACEPORT/VIRTURA-SPACE/pull/2)：赛事与数字空间服务的独立概念方案，未合并发布。
+
+请区分“已在预览站提供”“已验证”“候选方案”和“等待开发”。不要在登录页面显示不可用的 Google/GitHub 按钮，除非 Provider 配置、OAuth 回调、身份候补/RLS 与浏览器端到端测试全部通过。
+
 ## 预览发布
 
 ```sh
