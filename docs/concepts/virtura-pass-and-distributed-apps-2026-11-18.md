@@ -4,6 +4,8 @@
 > 主体：VIRTURA Space（团队平台）｜关联：[VIRTURA VJ BATTLE 概念](./virtura-vj-battle-2026-11-18.md)  
 > 当前代码：[VIRTURA-SPACE](../../README.md)
 
+**近期扩充**：VIRTURA VJ Battle 的 SceneForge 线上/线下集会与数字场地对接见 [混合赛事方案](./virtura-vj-battle-sceneforge-hybrid-2026-11-18.md)。身份与 Pass 承担用户及权限，不承担 3D 渲染、物理舞台控制或实时播控。
+
 ## 01. 产品边界：一个 ID，多种前台
 
 - **VIRTURA Space**：可浏览的场馆、应用、作品和活动的统一入口；公众内容无需先登录。
