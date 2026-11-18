@@ -4,6 +4,8 @@
 > 代码母仓：`VIRTURA-SPACEPORT/VIRTURA-SPACE`（Web App）。团队业务官网：`VIRTURA-SPACEPORT/VIRTURA-Website`（静态官网），**不是相同部署项目**。  
 > 本文件只记录已验证事实、规划决策和开发任务，不移动任何个人工程、修改上线站点或开启登录方式。
 
+**2026-11-19 用户决策更新：第三方注册可以自由开放，但注册成功只获得候补身份。** 新用户登录后进入 Waitlist Lobby，候补资格与团队成员、受邀 App 权限分离。旧的“只允许受邀账号绑定 OAuth”不是最新方向。所有第三方登录入口仍处于未启用状态。
+
 ## 一、当前事实（以上一轮 2026-11-18 验收和 2026-11-19 仓库核对为依据）
 
 | 对象 | 当前状态 | 证据与边界 |
@@ -16,7 +18,7 @@
 | My Space 收藏 | **已认可方向、未实现** | 追踪 [Issue #4](https://github.com/VIRTURA-SPACEPORT/VIRTURA-SPACE/issues/4) |
 | 测试用户 vs 组织成员 | **必须拆分** | 目前普通 `member` 被显示为“受邀成员”，外部测试者不应因此被视为 Collective 组织成员；[Issue #3](https://github.com/VIRTURA-SPACEPORT/VIRTURA-SPACE/issues/3) |
 | VJ Battle / Pass / 分布式 App | **有团队仓库策划稿，未开发** | [Draft PR #2](https://github.com/VIRTURA-SPACEPORT/VIRTURA-SPACE/pull/2)；包含 SceneForge 混合活动 M0 研究 |
-| Google/GitHub 登录及账号绑定 | **当前不支持，已完成实施方案** | [OAuth + 身份绑定规格](./AUTH-GOOGLE-GITHUB-IMPLEMENTATION-2026-11-19.md) |
+| Google/GitHub 注册与账号绑定 | **产品决策已改为开放第三方注册、默认候补；尚未实现** | [OAuth + 候补身份实施规格](./AUTH-GOOGLE-GITHUB-IMPLEMENTATION-2026-11-19.md) |
 | 应用系列 | **已有实际原型和独立产品候选，需要状态治理** | [App 系列与真实可用性登记](./APP-SERIES-REGISTRY-2026-11-19.md) |
 
 ### 仓库与域名边界
@@ -45,7 +47,7 @@
 1. **P0 / 权限**：外部受邀测试资格从 `virtura_memberships` 的团队角色中分离；批准、撤销与审计；跨账户 RLS / 会话撤权复测（#3）。
 2. **P0 / 真实产品**：选一件确实可复用的应用或档案对象，完成“开始→真实动作→结果→失败后恢复”闭环，不把空卡做成 App。
 3. **P1 / My Space**：保存/取消收藏；跨设备找回；下线条目正确处理（#4）。
-4. **P1 / 账号便捷登录**：先保持 OTP 作为安全兜底；给已受邀 ID 绑定 Google/GitHub，待服务端和权限验证通过才考虑启用新的登录按钮。绑定不赋予团队成员资格。
+4. **P1 / Google/GitHub 自由注册 + 候补**：用户最新决定允许第三方账号自由创建 VIRTURA ID，但默认仅为候补，不能直接进入封闭内测或成为成员。先完善候补及 RLS / 管理批准后，再配置并开启 OAuth；邮箱 OTP 作为现有账号的兜底。既有用户可以主动绑定登录方式，不能凭同名/任意邮箱推断身份。详见 [新版 OAuth 实施规格](./AUTH-GOOGLE-GITHUB-IMPLEMENTATION-2026-11-19.md)。
 5. **P1 / 反馈**：具体问题、相关应用版本、处理负责人、关闭与重开记录，少量真实用户测试。
 6. **P2 / App 分发**：先 Web/PWA + 独立应用链接；微信、小红书、XR 设备需分别验收认证和授权，不直接复制浏览器 token。
 7. **P2 / VJ Battle M0**：一份 SceneForge `scene.json`、一个 45 秒试赛、虚拟场馆和模拟现场双端共享受控 Cue、回放与事件记录。未通过此试验前不建大型 MMO 服务。
@@ -56,7 +58,7 @@
 - 每次只强调一个主操作，不让用户在无限应用目录里失焦；可跳过教程。
 - 所有可保存的行为要说明数据归属、版本与删除/退出方法；不采集不必要的行为数据。
 - 所有受限权限在服务端/RLS 验证，不能通过隐藏页面完成授权。
-- 微信/Google/GitHub/其他宿主端身份与 `VIRTURA ID` 分离为**登录凭据 vs 用户主体**，明确绑定/解绑。
+- Google / GitHub **允许新账号创建，但仅进入 pending 候补**；微信及其他宿主端身份与 `VIRTURA ID` 分离为**登录凭据 vs 用户主体**，明确绑定/解绑。
 - 前台 **Open / Invitation / Experimental / Archive / Planned** 与实际能力一致；不要宣传未存在的课程、赛事、奖金、证书、收藏与商店。
 - 不以通过一次技术测验自动获取团队权限或参与商务项目的授权；岗位任务须有负责人、证据、约定和退出机制。
 - 正式演出、商业交付与安全性优先；平台任务不挤占已定档的现场交付。
