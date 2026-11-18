@@ -15,7 +15,8 @@ type Access =
   | { state: 'guest' }
   | { state: 'denied' }
   | { state: 'error'; message: string }
-  | { state: 'member'; user: User; membership: Membership };
+  | { state: 'member'; user: User; membership: Membership }
+  | { state: 'waitlisted'; user: User; status: string; createdAt: string };
 
 function authError(code?: string): string {
   if (code === 'otp_expired') return '验证码无效或已过期，请重新获取。';
@@ -28,7 +29,22 @@ function authError(code?: string): string {
   return '暂时无法完成请求，请稍后重试。';
 }
 
+const socialProviders = (import.meta.env.VITE_SOCIAL_AUTH_ENABLED === 'true') ? (['google', 'github'] as const) : [];
+
 function SignIn() {
+  const [socialError, setSocialError] = useState('');
+  async function signInSocial(provider: 'google' | 'github') {
+    if (!supabase) return;
+    setSocialError('');
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider, options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) setSocialError('此登录方式暂时无法使用，请使用已有的受邀邮箱登录。');
+    } catch {
+      setSocialError('连接第三方登录失败，请稍后重试。');
+    }
+  }
   const [email, setEmail] = useState('');
   const [sentTo, setSentTo] = useState('');
   const [token, setToken] = useState('');
@@ -108,6 +124,20 @@ function SignIn() {
           : '使用我们邀请的邮箱登录 VIRTURA ID。首次登录后，即可查看你的账号与邀请状态。'}
       </p>
 
+      {socialProviders.length > 0 && !sentTo && (
+        <div className="social-auth" aria-label="其他登录方式">
+          <p className="field-help">Google / GitHub 可创建 VIRTURA ID。新账户仅进入候补名单，封闭测试仍需审核。</p>
+          <div className="social-actions">
+            {socialProviders.map((provider) => (
+              <button key={provider} type="button" className="social-button"
+                onClick={() => void signInSocial(provider)}>
+                通过 {provider === 'google' ? 'Google' : 'GitHub'} 继续
+              </button>
+            ))}
+          </div>
+          {socialError && <p role="alert" className="error">{socialError}</p>}
+        </div>
+      )}
       {sentTo ? (
         <form onSubmit={verifyCode} className="auth-form">
           <label htmlFor="otp">六位验证码</label>
@@ -181,9 +211,53 @@ function SignIn() {
   );
 }
 
+function WaitlistPanel({ access }: { access: Extract<Access, { state: 'waitlisted' }> }) {
+  const [signOutError, setSignOutError] = useState('');
+  return (
+    <>
+      <p className="eyebrow">VIRTURA ID <span>/</span> WAITLIST</p>
+      <h1>账号已建立。</h1>
+      <p className="intro">你已登录纬图空间。当前账号尚未取得封闭测试访问权限；公开作品和介绍可直接浏览。</p>
+      <section className="identity-panel" aria-label="候补状态">
+        <div className="identity-top"><span>VIRTURA ID</span><span className="access-label">候补中</span></div>
+        <p className="member-email">{access.user.email || '已验证的第三方身份'}</p>
+        <dl>
+          <div><dt>状态</dt><dd>{access.status === 'pending' ? '等待审核' : access.status === 'contacted' ? '已联系' : access.status === 'declined' ? '本轮未获邀请' : access.status === 'withdrawn' ? '已撤回申请' : '等待审核'}</dd></div>
+          <div><dt>创建日期</dt><dd>{new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(access.createdAt))}</dd></div>
+        </dl>
+      </section>
+      <div className="form-actions member-actions">
+        <a href="https://virtura.space">浏览公开内容</a>
+        <button type="button" className="text-button" onClick={() => void (async () => {
+          const { error } = await supabase!.auth.signOut({ scope: 'local' });
+          if (error) setSignOutError('退出失败，请重试。');
+        })()}>退出登录</button>
+      </div>
+      {signOutError && <p role="alert" className="error">{signOutError}</p>}
+    </>
+  );
+}
+
 function MemberPanel({ access }: { access: Extract<Access, { state: 'member' }> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [identities, setIdentities] = useState<string[]>([]);
+  const [identityError, setIdentityError] = useState('');
+  useEffect(() => {
+    if (!supabase || socialProviders.length === 0) return;
+    void supabase.auth.getUserIdentities().then(({data,error}) => {
+      if (error) setIdentityError('暂时无法读取关联的登录方式。');
+      else setIdentities(data.identities.map((identity) => identity.provider));
+    });
+  }, []);
+  async function linkProvider(provider: 'google' | 'github') {
+    if (!supabase) return;
+    setIdentityError('');
+    const {error} = await supabase.auth.linkIdentity({provider, options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    }});
+    if (error) setIdentityError('此登录方式暂时无法关联，请检查账户和授权配置。');
+  }
 
   async function signOut() {
     if (!supabase || busy) return;
@@ -214,6 +288,21 @@ function MemberPanel({ access }: { access: Extract<Access, { state: 'member' }> 
         <p className="member-id">{access.membership.user_id}</p>
       </section>
       <p className="field-help">体验内容将按测试进度陆续开放。</p>
+      {socialProviders.length > 0 && (
+        <section className="account-links" aria-label="关联登录方式">
+          <h2>账号安全与登录方式</h2>
+          <p className="field-help">已关联：{identities.length ? identities.join('、') : '正在确认'}</p>
+          <div className="social-actions">
+            {socialProviders.filter((provider) => !identities.includes(provider)).map((provider) => (
+              <button className="social-button" key={provider} type="button"
+                onClick={() => void linkProvider(provider)}>
+                绑定 {provider === 'google' ? 'Google' : 'GitHub'}
+              </button>
+            ))}
+          </div>
+          {identityError && <p className="error" role="alert">{identityError}</p>}
+        </section>
+      )}
       {error && <p className="error" role="alert">{error}</p>}
       <div className="form-actions member-actions">
         <a href="https://virtura.space">浏览公开内容 <span aria-hidden="true">↗</span></a>
@@ -300,7 +389,35 @@ export function App() {
         if (cancelled) return;
         if (error) throw error;
         if (!data) {
-          setAccess({ state: 'denied' });
+          const { data: existing, error: waitError } = await supabase!
+            .from('registration_waitlist')
+            .select('status, created_at')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          if (waitError) throw waitError;
+          if (cancelled) return;
+          if (existing) {
+            setAccess({state: 'waitlisted', user, status: existing.status, createdAt: existing.created_at});
+            document.title = 'VIRTURA ID · 候补状态';
+            window.history.replaceState(null, '', '/id');
+            return;
+          }
+          // Auth identity exists but confers no app or team access. Register only a
+          // pending request; the grant and team records can never be set by clients.
+          const { error: insertError } = await supabase!
+            .from('registration_waitlist')
+            .insert({ user_id: user.id });
+          if (insertError && insertError.code !== '23505') throw insertError;
+          const { data: after, error: rereadError } = await supabase!
+            .from('registration_waitlist')
+            .select('status, created_at')
+            .eq('user_id', user.id)
+            .single();
+          if (rereadError || !after) throw rereadError || new Error('Waitlist status unavailable');
+          if (cancelled) return;
+          setAccess({state: 'waitlisted', user, status: after.status, createdAt: after.created_at});
+          document.title = 'VIRTURA ID · 候补状态';
+          window.history.replaceState(null, '', '/id');
           return;
         }
         setAccess({ state: 'member', user, membership: data as Membership });
@@ -339,6 +456,7 @@ export function App() {
         <section className="access-main" aria-busy={access.state === 'loading'}>
           {access.state === 'guest' && <SignIn />}
           {access.state === 'member' && <MemberPanel access={access} />}
+          {access.state === 'waitlisted' && <WaitlistPanel access={access} />}
           {access.state === 'loading' && <><p className="eyebrow">VIRTURA ID</p><h1>正在读取账号…</h1><p className="intro" role="status">正在核验登录会话与邀请状态。</p></>}
           {access.state === 'denied' && <>
             <p className="eyebrow">VIRTURA ID <span>/</span> 邀请状态</p>
@@ -355,10 +473,10 @@ export function App() {
         </section>
         <aside className="access-aside" aria-label="登录说明">
           <h2>你的 VIRTURA ID</h2>
-          <p>一个邮箱，连接纬图空间里的参与。</p>
-          <div className="aside-row"><span>登录方式</span><span>邮箱验证码</span></div>
-          <div className="aside-row"><span>开放范围</span><span>受邀成员</span></div>
-          <p className="aside-note">封闭测试申请经团队批准后，才会开通账号和访问权限。</p>
+          <p>一个 VIRTURA ID，连接纬图空间里的参与。</p>
+          <div className="aside-row"><span>登录方式</span><span>邮箱验证码 / 规划中的社交登录</span></div>
+          <div className="aside-row"><span>测试范围</span><span>仅受邀用户</span></div>
+          <p className="aside-note">创建账户与取得封闭测试访问资格分开处理，团队成员身份需要独立授权。</p>
         </aside>
       </main>
       <footer className="site-footer"><span>© {new Date().getFullYear()} VIRTURA</span><a href="https://virtura.space">返回纬图空间 <span aria-hidden="true">↗</span></a></footer>
