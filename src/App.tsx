@@ -434,17 +434,6 @@ export function App() {
     return () => { cancelled = true; };
   }, [initialized, session]);
 
-  async function returnToSignIn() {
-    try {
-      const { error } = await supabase!.auth.signOut({ scope: 'local' });
-      if (error) throw error;
-      window.history.replaceState(null, '', '/sign-in');
-      setInitialized(true);
-      setAccess({ state: 'guest' });
-    } catch {
-      setAccess({ state: 'error', message: '暂时无法退出，请重试。' });
-    }
-  }
 
   return (
     <div className="site-shell">
